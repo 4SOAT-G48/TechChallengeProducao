@@ -1,6 +1,11 @@
 package br.com.fiap.soat.grupo48.grupo48.producao.application.domain.model;
 
 public enum SituacaoPedido {
+
+    /**
+     * Pedido entrou na fila para ser preparado
+     */
+    FILA_PREPARACAO,
     /**
      * A cozinha separou o pedido para
      * começar a montagem
