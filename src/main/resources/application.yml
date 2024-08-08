@@ -7,7 +7,7 @@ spring:
   config:
     import: optional:file:.env[.properties]
   profiles:
-    active: ${SPRING_PROFILE}
+    active: ${SPRING_PROFILE:none}
   datasource:
     url: jdbc:${POSTGRES_URL}
     username: ${POSTGRES_USER}

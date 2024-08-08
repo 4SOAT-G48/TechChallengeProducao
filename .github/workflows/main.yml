@@ -1,0 +1,120 @@
+name: pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+  ECS_SERVICE: ${{ vars.ECS_SERVICE }}
+  ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+  SERVER_PORT: ${{ vars.SERVER_PORT }}
+  POSTGRES_URL: ${{ secrets.POSTGRES_URL }}
+  POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+  POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+  POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+  RABBITMQ_HOST: ${{ secrets.RABBITMQ_HOST }}
+  RABBITMQ_PORT: ${{ secrets.RABBITMQ_PORT }}
+  RABBITMQ_USER: ${{ secrets.RABBITMQ_USER }}
+  RABBITMQ_PASSWORD: ${{ secrets.RABBITMQ_PASSWORD }}
+  LOG_LEVEL: ${{ vars.LOG_LEVEL }}
+  LOG_PATH: ${{ vars.LOG_PATH }}
+  EXCHANGE_PRODUCAO: ${{ vars.EXCHANGE_PRODUCAO }}
+  ROUTEKEY_PRODUCAO_INICIA_PEDIDO: ${{ vars.ROUTEKEY_PRODUCAO_INICIA_PEDIDO }}
+  QUEUES_PRODUCAO_INICIA_PEDIDO: ${{ vars.QUEUES_PRODUCAO_INICIA_PEDIDO }}
+  EXCHANGE_PRODUCAO_ATUALIZA_SITUACAO: ${{ vars.EXCHANGE_PRODUCAO_ATUALIZA_SITUACAO }}
+  ROUTEKEY_PRODUCAO_ATUALIZA_SITUACAO: ${{ vars.ROUTEKEY_PRODUCAO_ATUALIZA_SITUACAO }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: 21
+
+      - name: Build with Maven
+        run: mvn package -DskipTests
+        env:
+          AWS_REGION: ${{ env.AWS_REGION }}
+          AWS_ACCESS_KEY_ID: ${{ env.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ env.AWS_SECRET_ACCESS_KEY }}
+          ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
+          ECS_SERVICE: ${{ env.ECS_SERVICE }}
+          ECS_CLUSTER: ${{ env.ECS_CLUSTER }}
+          SERVER_PORT: ${{ env.SERVER_PORT }}
+          POSTGRES_URL: ${{ env.POSTGRES_URL }}
+          POSTGRES_USER: ${{ env.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ env.POSTGRES_PASSWORD }}
+          POSTGRES_DB: ${{ env.POSTGRES_DB }}
+          RABBITMQ_HOST: ${{ env.RABBITMQ_HOST }}
+          RABBITMQ_PORT: ${{ env.RABBITMQ_PORT }}
+          RABBITMQ_USER: ${{ env.RABBITMQ_USER }}
+          RABBITMQ_PASSWORD: ${{ env.RABBITMQ_PASSWORD }}
+          LOG_LEVEL: ${{ env.LOG_LEVEL }}
+          LOG_PATH: ${{ env.LOG_PATH }}
+          EXCHANGE_PRODUCAO: ${{ env.EXCHANGE_PRODUCAO }}
+          ROUTEKEY_PRODUCAO_INICIA_PEDIDO: ${{ env.ROUTEKEY_PRODUCAO_INICIA_PEDIDO }}
+          QUEUES_PRODUCAO_INICIA_PEDIDO: ${{ env.QUEUES_PRODUCAO_INICIA_PEDIDO }}
+          EXCHANGE_PRODUCAO_ATUALIZA_SITUACAO: ${{ env.EXCHANGE_PRODUCAO_ATUALIZA_SITUACAO }}
+          ROUTEKEY_PRODUCAO_ATUALIZA_SITUACAO: ${{ env.ROUTEKEY_PRODUCAO_ATUALIZA_SITUACAO }}
+
+      #      - name: Test with Maven
+      #        run: mvn test
+
+      - name: Archive artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-artifacts
+          path: target/*.jar
+
+  deploy:
+    name: Deploy
+    environment: production
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Verify AWS credentials
+        run: aws sts get-caller-identity
+
+      - name: Log in to AWS ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build, tag, and push Docker image to ECR
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
