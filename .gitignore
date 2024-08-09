@@ -26,4 +26,4 @@ replay_pid*
 !/.env
 
 .idea
-target/dependency-check-report.html
+target
